@@ -1,0 +1,8 @@
+{
+  "strport": 3232,
+  "url": "solo.xdag.org:13655",
+  "tls": false,
+  "debug": false,
+  "testnet": false,
+  "socks5": ""
+}
