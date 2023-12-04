@@ -1,4 +1,3 @@
-#!/usr/bin/python
 import os
 import re
 import sys
@@ -253,84 +252,74 @@ def GatherDevices():
             d.populate_all(pcidata)
             devices.append(d)
     return devices
- 
-DETECT_GB = 100
-MOUNT_PATH = '/mnt/volume_01'
-if not os.path.exists(MOUNT_PATH):
-    os.makedirs(MOUNT_PATH)
     
-target_disk = None
-devices = GatherDevices()
-for d in devices:
-    size = float(d.sectors) * float(d.sectorsize)
-    size_gb = size / 1024 / 1024 / 1024
-    if size_gb > DETECT_GB:
-        if len(d.partitions) == 0:
-            print("Create Parition", d.diskname, size_gb)
-            if size_gb > 2048:
-                os.system('printf "g\nn\n1\n\n\nw\n" | fdisk "/dev/{}"'.format(d.diskname))
-            else:
-                os.system('printf "o\nn\np\n1\n\n\nw\n" | fdisk "/dev/{}"'.format(d.diskname))
-            target_disk = d.diskname
-           
-devices = GatherDevices()
-for d in devices:
-    if d.diskname == target_disk:
-        partition = '/dev/{}'.format(d.partitions[0].diskname)
-        print("Format Parition ext4", partition)
-        os.system('mkfs -t ext4 {}'.format(partition))
-
-devices = GatherDevices()
-for d in devices:
-    if d.diskname == target_disk:
+def GetNextMountPath():
+    i = 1
+    while True:
+        full_path = '/mnt/volume_{}'.format(str(i).zfill(2))
+        if not os.path.ismount(full_path):
+            return full_path
+        i += 1
+ 
+def TryCreateDisk():
+    DETECT_GB = 100
+        
+    target_disk = None
+    devices = GatherDevices()
+    for d in devices:
         size = float(d.sectors) * float(d.sectorsize)
         size_gb = size / 1024 / 1024 / 1024
+        print(d.diskname, size_gb, len(d.partitions))
         if size_gb > DETECT_GB:
-            assert len(d.partitions) == 1
-            for i in range(len(d.partitions)):
-                f = open('/etc/fstab', 'r')
-                fstab_content = f.read()
-                f.close()
-                fstab_content = fstab_content.replace('/dev/disk/cloud/azure_resource-part1	/mnt	auto	defaults,nofail,x-systemd.requires=cloud-init.service,comment=cloudconfig	0	2\n', '')
-                fstab_content = fstab_content.replace('/dev/disk/cloud/azure_resource-part1	/mnt	auto	defaults,nofail,x-systemd.requires=cloud-init.service,_netdev,comment=cloudconfig	0	2\n', '')
-                if not d.uuids[i] in fstab_content:
-                    print("Write to fstab:", d.partitions[i].diskname, size_gb)
-                    mount_info = 'UUID={} {}          ext4    defaults,nofail,discard 0 0\n'.format(d.uuids[i], MOUNT_PATH)
-                    fstab_content += mount_info
-                    f = open('/etc/fstab', 'w')
-                    f.write(fstab_content)
-                    f.close()
+            if len(d.partitions) == 0:
+                print("Create Parition", d.diskname, size_gb)
+                if size_gb > 2000:
+                    os.system('printf "g\nn\n1\n\n\nw\n" | fdisk "/dev/{}"'.format(d.diskname))
+                else:
+                    os.system('printf "o\nn\np\n1\n\n\nw\n" | fdisk "/dev/{}"'.format(d.diskname))
+                target_disk = d.diskname
+                break
 
-'''
-for d in devices:
-    print d.diskname
-    print "\tHost: " + d.host
-    print "\tVendor: " + d.vendor
-    print "\tModel: " + d.model
-    print "\tSector size (bytes): " + d.sectorsize
-    print "\tSectors: " + d.sectors
-    size = float(d.sectors) * float(d.sectorsize)
-    pretty = pretty_size(size)
-    print "\tSize: " + pretty
-    print "\tRemovable: " + d.removable
-    print "\tDisk type: " + d.rotational
-    print "\tSupports discard: " + d.discard
-    if len(d.holders) > 0:
-        print "\tHolders:"
-        for h in d.holders:
-            print "\t\t" + h
-    if len(d.partitions) > 0:
-        print "\tPartitions:"
-        for p in d.partitions:
-            print "\t\t" + p.diskname
-            print "\t\t\tStart sector: " + p.start
-            print "\t\t\tSectors: " + p.sectors
-            size = float(p.sectors) * float(d.sectorsize)
-            pretty = pretty_size(size)
-            print "\t\t\tSize: " + pretty
-            if len(p.holders) > 0:
-                print "\t\t\tHolders:"
-                for h in p.holders:
-                    print "\t\t\t\t" + h
-'''
-# vim: tabstop=4 expandtab shiftwidth=4 softtabstop=4
+    if target_disk == None:
+        print("Couldn't find disk greater than {}GB and no partition".format(DETECT_GB))
+        return False
+
+    devices = GatherDevices()
+    for d in devices:
+        if d.diskname == target_disk:
+            partition = '/dev/{}'.format(d.partitions[0].diskname)
+            print("Format Parition ext4", partition)
+            os.system('mkfs -t ext4 {}'.format(partition))
+
+    devices = GatherDevices()
+    for d in devices:
+        if d.diskname == target_disk:
+            size = float(d.sectors) * float(d.sectorsize)
+            size_gb = size / 1024 / 1024 / 1024
+            if size_gb > DETECT_GB:
+                assert len(d.partitions) == 1
+                for i in range(len(d.partitions)):
+                    f = open('/etc/fstab', 'r')
+                    fstab_content = f.read()
+                    f.close()
+                    fstab_content = fstab_content.replace('/dev/disk/cloud/azure_resource-part1    /mnt    auto    defaults,nofail,x-systemd.requires=cloud-init.service,comment=cloudconfig    0    2\n', '')
+                    fstab_content = fstab_content.replace('/dev/disk/cloud/azure_resource-part1    /mnt    auto    defaults,nofail,x-systemd.requires=cloud-init.service,_netdev,comment=cloudconfig    0    2\n', '')
+                    if not d.uuids[i] in fstab_content:
+                        mount_path = GetNextMountPath()
+                        if not os.path.exists(mount_path):
+                            os.makedirs(mount_path)
+                        print("Write to fstab:", d.partitions[i].diskname, size_gb, mount_path)
+                        mount_info = 'UUID={} {}          ext4    defaults,nofail,discard 0 0\n'.format(d.uuids[i], mount_path)
+                        fstab_content += mount_info
+                        f = open('/etc/fstab', 'w')
+                        f.write(fstab_content)
+                        f.close()
+                        print(d.partitions[i].diskname, "temp mount to ", mount_path)
+                        os.system("mount /dev/{} {}".format(d.partitions[i].diskname, mount_path))
+    return True
+    
+while True:
+    is_has_next = TryCreateDisk()
+    print(is_has_next)
+    if not is_has_next:
+        break
